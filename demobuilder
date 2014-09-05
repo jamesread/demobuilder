@@ -1,0 +1,44 @@
+#!/usr/bin/python
+
+from httpserver import Server
+import argparse
+import os
+from sys import exit
+from shutil import rmtree
+
+parser = argparse.ArgumentParser();
+parser.add_argument("action", choices = ["build", "clean"], default = "build")
+parser.add_argument("--httpBindAddress", default = "192.168.122.1")
+parser.add_argument("--layers", nargs = "+", required = False, type = list, default = list())
+parser.add_argument("--base")
+args = parser.parse_args();
+
+if not args.layers:
+	args.layers.append("vagrant")
+
+if args.action == "clean": 
+	if os.path.exists("build/"):
+		rmtree("build/");
+
+if args.action == "build":
+	if not os.path.exists("build/"):
+		os.mkdir("build")
+
+	#proxyServer = Server(args.httpBindAddress).start()
+	httpServer = Server(args.httpBindAddress).start()
+
+	for layer in args.layers:
+		print "Building: ", layer
+		installationFile = os.path.join("layers", layer, "install")
+
+		if not os.path.exists(installationFile):
+			print "Installation not found for layer:", layer, ", expecting to find it here:", installationFile
+			exit(1)
+
+		os.environ['HTTPLISTENER'] = args.httpBindAddress + ":" + str(httpServer.port)
+		os.environ['BRIDGE'] = "virbr0"
+		print "base: ", args.base
+		os.execle(installationFile, args.base, os.environ)
+
+	#proxyServer.stop();
+	httpServer.stop();
