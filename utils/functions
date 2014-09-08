@@ -64,3 +64,30 @@ wait_pid() {
 if [ "$DEBUG" ]; then
   set -x
 fi
+
+require_proxy() {
+  if [ -z "$PROXYLISTENER" ]; then
+    echo "Proxy listener is not defined";
+  fi
+}
+
+require_httplistener() {
+  if [ -z "$HTTPLISTENER" ]; then
+    echo "HTTP listener is not defined.";
+	exit 1
+  fi
+}
+
+require_bridge(){ 
+  if [ -z "$BRIDGE" ]; then
+    echo "bridge is not set"
+	exit1
+  fi
+}
+
+require_keys() {
+  if [ ! -e keys/demobuilder.pub ]; then
+    echo "keys have not been created"
+	exit 1
+ fi
+}

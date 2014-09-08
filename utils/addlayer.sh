@@ -2,10 +2,9 @@
 
 . utils/functions
 
-if [ -z "$PROXYLISTENER" -o -z "$BRIDGE" -o ! -e keys/demobuilder ]; then
-  echo "$0: build environment incorrect"
-  exit 1
-fi
+require_proxy
+require_bridge
+require_keys
 
 if [ $# -lt 1 -o $# -gt 2 ]; then
   echo "usage: $0 base [path/to/layer]"

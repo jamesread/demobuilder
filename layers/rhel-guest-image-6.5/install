@@ -2,10 +2,7 @@
 
 . utils/functions
 
-if [ ! -e keys/demobuilder.pub ]; then
-  echo "$0: build environment incorrect"
-  exit 1
-fi
+require_keys
 
 TARGET=build/$(basename $(dirname $0)).qcow2
 if [ -e $TARGET ]; then

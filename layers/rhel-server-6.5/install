@@ -2,10 +2,9 @@
 
 . utils/functions
 
-if [ -z "$HTTPLISTENER" -o -z "$BRIDGE" -o ! -e keys/demobuilder.pub ]; then
-  echo "$0: build environment incorrect"
-  exit 1
-fi
+require_httplistener
+require_bridge
+require_keys
 
 TARGET=build/$(basename $(dirname $0)).qcow2
 if [ -e $TARGET ]; then
