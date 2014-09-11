@@ -2,8 +2,16 @@
 
 . config
 
+if [ -z "$CACHE_DIR" ]; then
+  CACHE_DIR=~/.demobuilder/cache/
+fi
+
+if [ ! -e "$CACHE_DIR" ]; then
+  mkdir -p "$CACHE_DIR"
+fi
+
 cache() {
-  DEST=cache/$(echo $1 | sed -e 's!.*://!!')
+  DEST=$CACHE_DIR/$(echo $1 | sed -e 's!.*://!!')
   if ! [ -e $DEST ]; then
     mkdir -p $(dirname $DEST)
     curl -o $DEST $1
