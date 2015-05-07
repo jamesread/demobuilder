@@ -2,12 +2,18 @@
 
 . utils/functions
 
+if [ $# -eq 0 ]; then
+  echo "usage: $0 snap [vncport]"
+  exit 1
+fi
+
 TMPDIR=$(mktemp -d)
+VNC=${2:-:0}
 
 utils/sigwrap /usr/bin/qemu-kvm -nodefaults \
   -smp 2 \
   -m 2048 \
-  -drive discard=unmap,file=$1,id=disk1,if=none \
+  -drive discard=unmap,file=$1,id=disk1,if=none,cache=unsafe \
   -device virtio-scsi-pci \
   -device scsi-disk,drive=disk1 \
   -net bridge,br=virbr0 \
@@ -18,11 +24,13 @@ utils/sigwrap /usr/bin/qemu-kvm -nodefaults \
   -device virtserialport,chardev=chan0,name=com.redhat.rhevm.vdsm \
   -device virtserialport,chardev=chan1,name=org.qemu.guest_agent.0 \
   -device vmware-svga \
-  -vnc :0 \
+  -vnc $VNC \
   -usbdevice tablet \
   &>/dev/null &
 
-echo QEMUPID=$!
-utils/wait-ip.py $TMPDIR
+QEMUPID=$!
+echo QEMUPID=$QEMUPID
+
+utils/wait-ip.py $TMPDIR $QEMUPID
 
 rm -rf $TMPDIR

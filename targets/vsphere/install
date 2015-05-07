@@ -1,0 +1,38 @@
+#!/bin/bash -e
+
+. utils/functions
+
+if [ $# -ne 1 ]; then
+  echo "usage: $0 base"
+  exit 1
+fi
+
+BASE=$1
+TARGET=${BASE//\//:}
+
+if [ -e layers/$BASE/properties ]; then
+  . layers/$BASE/properties
+fi
+
+export MEM=${MEM:-1024}
+export NAME=${NAME:-$TARGET}
+export CPUS=${CPUS:-1}
+
+if [ -e build/vsphere/$TARGET.ova ]; then
+  echo "$0: build/vsphere/$TARGET.ova already exists, not rebuilding"
+  exit
+fi
+
+utils/addlayer.sh build/$TARGET.qcow2 targets/vsphere tmp/$TARGET:vsphere.qcow2
+convert_qcow2 tmp/$TARGET:vsphere.qcow2 raw
+
+utils/VMDKstream.py tmp/$TARGET:vsphere.raw tmp/$TARGET:vsphere.vmdk
+
+TMPDIR=$(mktemp -d)
+envsubst <$(dirname $0)/template.ovf >$TMPDIR/template.ovf
+
+tar -Pcf tmp/$TARGET.ova --transform='s!.*/!!' --transform="s/$TARGET:vsphere.vmdk/template-disk1.vmdk/" $TMPDIR/template.ovf tmp/$TARGET:vsphere.vmdk
+rm -rf tmp/$TARGET:vsphere.qcow2 tmp/$TARGET:vsphere.raw tmp/$TARGET:vsphere.vmdk $TMPDIR
+
+mkdir -p build/vsphere
+mv tmp/$TARGET.ova build/vsphere/$TARGET.ova

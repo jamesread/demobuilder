@@ -1,25 +1,46 @@
-#!/bin/bash
+#!/bin/bash -e
+
+. ./config
 
 register_channels() {
   for CHANNEL in $*; do
-    curl -so /etc/yum.repos.d/auto-$CHANNEL.repo http://10.33.11.10:8085/$CHANNEL.repo
+    curl -so /etc/yum.repos.d/auto-$CHANNEL.repo $MIRROR_RHN/$CHANNEL.repo
+    sed -i -e "$ a\
+proxy=$PROXY" /etc/yum.repos.d/auto-$CHANNEL.repo
   done
 }
 
 yum_update() {
-  yum -y update
+  /usr/bin/python -u /usr/bin/yum -y update
+
+  # running kernel, so must use rpm -e
   rpm -e $(rpm -q kernel --last | tail -n +2 | cut -d' ' -f1)
 }
 
-install_packages() {
-  yum -y install $*
+yum_remove() {
+  /usr/bin/python -u /usr/bin/yum -y remove $*
+}
+
+yum_install() {
+  /usr/bin/python -u /usr/bin/yum -y install $*
+}
+
+register_https_proxy_ca() {
+  http_proxy=$PROXY curl -so /etc/pki/ca-trust/source/anchors/demobuilder-insecure-CA.crt http://cacert/
+  update-ca-trust enable
+  update-ca-trust
 }
 
 cleanup() {
-  yum clean all
-  rm /etc/yum.repos.d/auto-*.repo
+  /usr/bin/python -u /usr/bin/yum clean all || true
+  rm -f /etc/yum.repos.d/auto-*.repo
 
-  rm /etc/ssh/ssh_host_*
+  rm -f /etc/ssh/ssh_host_*
+
+  if [ -e /etc/pki/ca-trust/source/anchors/demobuilder-insecure-CA.crt ]; then
+    rm -f /etc/pki/ca-trust/source/anchors/demobuilder-insecure-CA.crt
+    update-ca-trust
+  fi
 
   fstrim /
 }

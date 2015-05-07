@@ -1,0 +1,10 @@
+#!/bin/bash -ex
+
+. vm-functions
+
+# register_channels channel1 channel2
+# yum_install myrpm1 myrpm2
+
+# do more stuff...
+
+# cleanup

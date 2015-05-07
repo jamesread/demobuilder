@@ -1,27 +1,22 @@
-#!/bin/bash
+#!/bin/bash -e
 
 . config
-
-cache() {
-  DEST=cache/$(echo $1 | sed -e 's!.*://!!')
-  if ! [ -e $DEST ]; then
-    mkdir -p $(dirname $DEST)
-    curl -o $DEST $1
-  fi
-  echo $DEST
-}
 
 interface_ip() {
   ip addr show dev $1 | sed -n '/inet / { s!.*inet !!; s!/.*!!; p; }'
 }
 
-proxy_start() {
-  eval $(utils/yumproxy.py $(interface_ip $BRIDGE))
-  export PROXYLISTENER
+dcserver_start() {
+  [ -e dockercache ] || mkdir dockercache
+  WD=$PWD
+  pushd dockercache &>/dev/null
+  eval $($WD/utils/dockercache.py $(interface_ip $BRIDGE))
+  popd &>/dev/null
+  export DCLISTENER
 }
 
-proxy_stop() {
-  kill $PROXYPID
+dcserver_stop() {
+  kill $DCPID
 }
 
 httpserver_start() {

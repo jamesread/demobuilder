@@ -1,0 +1,41 @@
+#!/bin/bash -e
+
+. utils/functions
+
+if [ $# -ne 1 ]; then
+  echo "usage: $0 base"
+  exit 1
+fi
+
+BASE=$1
+TARGET=${BASE//\//:}
+
+if [ -e layers/$BASE/properties ]; then
+  . layers/$BASE/properties
+fi
+
+export MEM=${MEM:-1024}
+export NAME=${NAME:-$TARGET}
+export CPUS=${CPUS:-1}
+
+if [ -e build/vagrant/$TARGET.box ]; then
+  echo "$0: build/vagrant/$TARGET.box already exists, not rebuilding"
+  exit
+fi
+
+utils/addlayer.sh build/$TARGET.qcow2 targets/vagrant tmp/$TARGET:vagrant.qcow2
+convert_qcow2 tmp/$TARGET:vagrant.qcow2 qcow2
+compress_qcow2 tmp/$TARGET:vagrant.qcow2
+
+TMPDIR=$(mktemp -d)
+envsubst <$(dirname $0)/Vagrantfile >$TMPDIR/Vagrantfile
+
+tar -czf tmp/$TARGET.box --transform='s!.*/!!' --transform="s/$TARGET:vagrant.qcow2/box.img/" $(dirname $0)/metadata.json tmp/$TARGET:vagrant.qcow2 $TMPDIR/Vagrantfile
+rm -rf tmp/$TARGET:vagrant.qcow2 $TMPDIR
+
+mkdir -p build/vagrant
+mv tmp/$TARGET.box build/vagrant/$TARGET.box
+
+echo \$ vagrant box add $TARGET build/vagrant/$TARGET.box
+echo \$ vagrant init $TARGET
+echo \$ vagrant up
