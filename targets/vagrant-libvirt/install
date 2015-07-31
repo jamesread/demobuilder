@@ -1,0 +1,42 @@
+#!/bin/bash -e
+
+. utils/functions
+
+if [ $# -ne 1 ]; then
+  echo "usage: $0 base"
+  exit 1
+fi
+
+BASE=$1
+TARGET=${BASE//\//:}
+
+if [ -e layers/$BASE/properties ]; then
+  . layers/$BASE/properties
+fi
+
+export MEM=${MEM:-1024}
+export CPUS=${CPUS:-1}
+
+if [ -e build/vagrant-libvirt/$TARGET.box ]; then
+  echo "$0: build/vagrant-libvirt/$TARGET.box already exists, not rebuilding"
+  exit
+fi
+
+utils/addlayer.sh build/$TARGET.qcow2 targets/vagrant-libvirt tmp/$TARGET:vagrant.qcow2
+convert_qcow2 tmp/$TARGET:vagrant.qcow2 qcow2
+compress_qcow2 tmp/$TARGET:vagrant.qcow2
+# ~/src/vmdisktool/vmdisktool -f qcow2 tmp/$TARGET:vagrant.qcow2 tmp/$TARGET:vagrant.qcow2.tmp
+# mv tmp/$TARGET:vagrant.qcow2.tmp tmp/$TARGET:vagrant.qcow2
+
+TMPDIR=$(mktemp -d)
+envsubst <$(dirname $0)/Vagrantfile >$TMPDIR/Vagrantfile
+
+tar -c --transform='s!.*/!!' --transform="s/$TARGET:vagrant.qcow2/box.img/" $(dirname $0)/metadata.json tmp/$TARGET:vagrant.qcow2 $TMPDIR/Vagrantfile | pigz >tmp/$TARGET.box
+rm -rf tmp/$TARGET:vagrant.qcow2 $TMPDIR
+
+mkdir -p build/vagrant-libvirt
+mv tmp/$TARGET.box build/vagrant-libvirt/$TARGET.box
+
+echo \$ vagrant box add $TARGET build/vagrant-libvirt/$TARGET.box
+echo \$ vagrant init $TARGET
+echo \$ vagrant up
