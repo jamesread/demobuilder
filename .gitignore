@@ -1,8 +1,12 @@
-/dockercache
 /build
-/config
+/certs
+/config.yml
+/isos
 /keys
-/tmp
-/properties
+/log
+/misc
 /releases
+/snap
+/tmp
+/webproxycache.db*
 *.pyc

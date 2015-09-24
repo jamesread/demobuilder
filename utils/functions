@@ -1,14 +1,14 @@
 #!/bin/bash -e
 
-. config
-
 interface_ip() {
   ip addr show dev $1 | sed -n '/inet / { s!.*inet !!; s!/.*!!; p; }'
 }
 
 apiserver_start() {
-  eval $(utils/apiserver.py $(interface_ip $BRIDGE))
+  eval $(utils/apiserver.py $(interface_ip $BUILD_BRIDGE))
   export APILISTENER
+
+  export PROXY=$(curl -s http://$APILISTENER/cache)
 }
 
 apiserver_stop() {
@@ -19,16 +19,21 @@ compress_qcow2() {
   BACKINGFILE=$(qemu-img info $1 | sed -n -e '/^backing file: / { s/.*: //; p; }')
 
   if [ -z $BACKINGFILE ]; then
-    qemu-img convert -c -O qcow2 $1 $1.tmp
+    qemu-img convert -c -O qcow2 -o compat=0.10 $1 $1.tmp
   else
-    qemu-img convert -c -O qcow2 -B $BACKINGFILE $1 $1.tmp
+    qemu-img convert -c -O qcow2 -o compat=0.10 -B $BACKINGFILE $1 $1.tmp
   fi
 
   mv $1.tmp $1
 }
 
 convert_qcow2() {
-  qemu-img convert -O $2 $1 $1.tmp
+  if [ $2 = qcow2 ]; then
+    qemu-img convert -O $2 -o compat=0.10 $1 $1.tmp
+  else
+    qemu-img convert -O $2 $1 $1.tmp
+  fi
+
   mv $1.tmp $(echo $1 | sed -e 's/\.[^.]*$//').$2
 }
 
@@ -38,10 +43,28 @@ wait_pid() {
   done
 }
 
-read_properties() {
-  eval $(utils/readproperties.py $1 $2)
+read_config() {
+  unsetx
+  eval $(utils/readconfig.py $1 $2)
+  setx
+}
+
+unsetx() {
+  if [[ $- =~ x ]]; then
+    XTRACE=on
+  fi
+
+  set +x
+}
+
+setx() {
+  if [ -n "$XTRACE" ]; then
+    set -x
+  fi
 }
 
 if [ "$DEBUG" ]; then
   set -x
 fi
+
+read_config

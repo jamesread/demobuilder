@@ -3,7 +3,7 @@
 . vm-functions
 
 openshift_install() {
-  https_proxy=$PROXY curl -so openshift.sh https://raw.githubusercontent.com/openshift/openshift-extras/enterprise-2.2/enterprise/install-scripts/generic/openshift.sh
+  https_proxy=$PROXY curl -sLo openshift.sh https://github.com/openshift/openshift-extras/raw/enterprise-2.2/enterprise/install-scripts/generic/openshift.sh
   chmod 0755 ./openshift.sh
   ./openshift.sh
 }
@@ -49,8 +49,6 @@ register_channels jb-eap-6-for-rhel-6-server-rpms jb-ews-2-for-rhel-6-server-rpm
 
 yum_remove rsyslog
 
-register_https_proxy_ca
-
 openshift_install
 openshift_enable_admin_console
 openshift_configure_node
@@ -73,5 +71,3 @@ firefox_set_homepage https://$CONF_BROKER_HOSTNAME/
 # nexus configuration and .m2 etc
 # add apps
 # add docs
-
-cleanup

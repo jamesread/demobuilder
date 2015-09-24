@@ -5,8 +5,14 @@ import bottle
 import gitstamp
 import os
 import socket
+import sys
 import tempfile
+import threading
 import wsgiref.simple_server
+import yaml
+
+sys.path.append("contrib")
+import webproxycache
 
 
 class WSGIRefServer(bottle.ServerAdapter):
@@ -56,10 +62,11 @@ def static(path):
         bottle.abort(400)
 
     path = "./" + path.strip("/")
-    with tempfile.NamedTemporaryFile(dir=".") as f:
+    if os.path.dirname(path) and not os.path.isdir(os.path.dirname(path)):
+        os.makedirs(os.path.dirname(path))
+
+    with tempfile.NamedTemporaryFile(dir=os.path.dirname(path)) as f:
         copy(bottle.request["wsgi.input"], f, length)
-        if os.path.dirname(path) and not os.path.isdir(os.path.dirname(path)):
-            os.makedirs(os.path.dirname(path))
         os.rename(f.name, path)
         f.delete = False
 
@@ -67,8 +74,19 @@ def static(path):
 
 
 @app.get("/gitstamp")
-def git_stamp():
+def _gitstamp():
     return gitstamp.gitstamp(bottle.request.query.msg)
+
+
+@app.get("/cache")
+def cache():
+    return "http://%s:%u/" % (args.ip, cacheport)
+
+
+@app.get("/config")
+def config():
+    config = yaml.load(open("config.yml").read())
+    return ["%s='%s'\n" % (k.upper(), config["config"][k]) for k in config["config"] if config["config"][k]]
 
 
 def parse_args():
@@ -80,30 +98,50 @@ def parse_args():
 
 
 def main():
+    global args
+    global cacheport
+
     args = parse_args()
 
-    for port in range(1024, 65536):
+    for apiport in range(1024, 65536):
         try:
-            server = WSGIRefServer(args.ip, port)
+            apiserver = WSGIRefServer(args.ip, apiport)
+            break
+
+        except socket.error:
+            pass
+
+    for cacheport in range(apiport + 1, 65536):
+        try:
+            cacheserver = webproxycache.make_server(args.ip, cacheport)
             break
 
         except socket.error:
             pass
 
     if args.debug:
-        app.run(server=server)
+        t = threading.Thread(target=cacheserver.serve_forever)
+        t.daemon = True
+        t.start()
+
+        app.run(server=apiserver)
 
     else:
         pid = os.fork()
         if not pid:
             os.closerange(0, 3)
             os.open("/dev/null", os.O_RDONLY)
-            os.open("/dev/null", os.O_WRONLY)
-            os.open("/dev/null", os.O_WRONLY)
-            app.run(server=server)
+            os.open("log", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0666)
+            os.open("log", os.O_WRONLY)
+
+            t = threading.Thread(target=cacheserver.serve_forever)
+            t.daemon = True
+            t.start()
+
+            app.run(server=apiserver)
 
         else:
-            print "APILISTENER=%s:%u" % (args.ip, port)
+            print "APILISTENER=%s:%u" % (args.ip, apiport)
             print "APIPID=%u" % pid
 
 if __name__ == "__main__":

@@ -1,12 +1,43 @@
 #!/bin/bash -e
 
-. ./config
+interface_ip() {
+  ip addr show dev $1 | sed -n '/inet / { s!.*inet !!; s!/.*!!; p; }'
+}
 
 register_channels() {
-  for CHANNEL in $*; do
-    curl -so /etc/yum.repos.d/auto-$CHANNEL.repo $MIRROR_RHN/$CHANNEL.repo
-    sed -i -e "/\[/ a\
-proxy=$PROXY" /etc/yum.repos.d/auto-$CHANNEL.repo
+  if [ -n "$RHN_USER" -a -x /sbin/subscription-manager -a ! -e /etc/pki/consumer/cert.pem ]; then
+    cp /etc/os-release /etc/os-release-
+
+    unsetx
+    subscription-manager register --username "$RHN_USER" --password "$RHN_PASS"
+    setx
+
+    if [ -n "$RHN_POOLS" ]; then
+      for pool in $RHN_POOLS; do
+        subscription-manager attach --pool=$pool
+      done
+    else
+      subscription-manager attach --auto
+    fi
+
+    yum-config-manager --disable &>/dev/null
+
+  else
+    grep -q ^proxy= /etc/yum.conf || echo proxy=$PROXY >>/etc/yum.conf
+  fi
+
+  if [ -e /etc/fedora-release ]; then
+    for i in /etc/yum.repos.d/*.repo; do
+      sed -i -e "s!^#baseurl=http://download.fedoraproject.org/!baseurl=$MIRROR_FEDORA/!; s/^metalink=/#metalink=/" $i
+    done
+  fi
+
+  for CHANNEL in "$@"; do
+    if [ -n "$RHN_USER" -a -x /sbin/subscription-manager ]; then
+      yum-config-manager --enable $CHANNEL &>/dev/null
+    else
+      curl -so /etc/yum.repos.d/auto-$CHANNEL.repo $MIRROR_RHN/$CHANNEL.repo
+    fi
   done
 }
 
@@ -15,31 +46,28 @@ yum_update() {
 }
 
 yum_remove() {
-  /usr/bin/python -u /usr/bin/yum -y remove $*
+  /usr/bin/python -u /usr/bin/yum -y remove "$@"
 }
 
 yum_install() {
-  /usr/bin/python -u /usr/bin/yum -y install $*
+  /usr/bin/python -u /usr/bin/yum -y install "$@"
 }
 
 docker_pull() {
-  if ! pidof docker >/dev/null; then
-    service docker start
+  if ! grep -q HTTP_PROXY /etc/sysconfig/docker; then
+    cat >>/etc/sysconfig/docker <<EOF
+HTTP_PROXY=$PROXY
+HTTPS_PROXY=$PROXY
+EOF
+    service docker restart
   fi
 
-  if ! curl -s $APILISTENER/static/dockercache/$1 | gunzip 2>/dev/null | docker load &>/dev/null; then
-    docker pull $1
-    docker save $1 | gzip | curl -s -H 'Content-Type: application/octet-stream' --data-binary @- $APILISTENER/static/dockercache/$1
-  fi
-}
-
-register_https_proxy_ca() {
-  http_proxy=$PROXY curl -so /etc/pki/ca-trust/source/anchors/demobuilder-insecure-CA.crt http://cacert/
-  update-ca-trust enable
-  update-ca-trust
+  docker pull $1
 }
 
 cleanup() {
+  [ -x /usr/local/bin/demobuilder-cleanup.sh ] && /usr/local/bin/demobuilder-cleanup.sh
+
   http_proxy= curl -s "http://$APILISTENER/gitstamp?msg=$LAYER" >>/etc/demobuilder
 
   # running kernel, so must use rpm -e
@@ -47,12 +75,45 @@ cleanup() {
 
   /usr/bin/python -u /usr/bin/yum clean all || true
   rm -f /etc/yum.repos.d/auto-*.repo
+  sed -i -e '/^proxy=/ d;' /etc/yum.conf
+
+  if [ -n "$RHN_USER" -a -x /sbin/subscription-manager -a -e /etc/pki/consumer/cert.pem ]; then
+    subscription-manager unregister || true
+    rm /var/lib/rhsm/branded_name
+    mv /etc/os-release- /etc/os-release
+  fi
+
+  if [ -e /etc/fedora-release ]; then
+    for i in /etc/yum.repos.d/*.repo; do
+      sed -i -e "s!^baseurl=$MIRROR_FEDORA/!#baseurl=http://download.fedoraproject.org/!; s/^#metalink=/metalink=/" $i
+    done
+  fi
 
   rm -f /etc/ssh/ssh_host_*
+  rm -f /var/lib/dhclient/dhclient-*-eth0.lease
 
   if [ -e /etc/pki/ca-trust/source/anchors/demobuilder-insecure-CA.crt ]; then
     rm -f /etc/pki/ca-trust/source/anchors/demobuilder-insecure-CA.crt
     update-ca-trust
+  fi
+
+  if [ -e /usr/share/doc/demobuilder/index.html ]; then
+    mkdir -p /home/demo/Desktop
+    cat >/home/demo/Desktop/demobuilder.desktop <<EOF
+[Desktop Entry]
+Version=1.0
+Name=About this demo
+Exec=firefox file:///usr/share/doc/demobuilder/index.html
+Icon=/usr/share/icons/gnome/256x256/apps/help-browser.png
+Terminal=false
+Type=Application
+StartupNotify=true
+EOF
+    chown -R demo:demo /home/demo/Desktop
+  fi
+
+  if [ -e /etc/sysconfig/docker ]; then
+    sed -ri -e '/^HTTPS?_PROXY/ d; /^NO_PROXY/ d;' /etc/sysconfig/docker
   fi
 
   fstrim /
@@ -93,4 +154,31 @@ pref("signon.rememberSignons", false);
 EOF
 }
 
+unsetx() {
+  if [[ $- =~ x ]]; then
+    XTRACE=on
+  fi
+
+  set +x
+}
+
+setx() {
+  if [ -n "$XTRACE" ]; then
+    set -x
+  fi
+}
+
+unsetx
+eval $(curl -s $APILISTENER/config)
+setx
+
+setenforce 0
 swapoff -a
+
+export PROXY=$(curl -s http://$APILISTENER/cache)
+
+if [ ! -e /etc/pki/ca-trust/source/anchors/demobuilder-insecure-CA.crt ]; then
+  http_proxy=$PROXY curl -so /etc/pki/ca-trust/source/anchors/demobuilder-insecure-CA.crt http://cacert/
+  update-ca-trust enable
+  update-ca-trust
+fi

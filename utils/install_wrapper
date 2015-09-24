@@ -1,0 +1,41 @@
+#!/bin/bash -ex
+
+cd demobuilder
+
+. vm-functions
+
+if ! [ -e /usr/local/bin/demobuilder-cleanup.sh ]; then
+  echo '#!/bin/bash -x' >/usr/local/bin/demobuilder-cleanup.sh
+  chmod 0755 /usr/local/bin/demobuilder-cleanup.sh
+fi
+
+if ! ./install; then
+  if [ -n "$RHN_USER" -a -x /sbin/subscription-manager -a -e /etc/pki/consumer/cert.pem ]; then
+    subscription-manager unregister
+  fi
+
+  echo "$0: FAILED."
+
+  if [ -n "$DEBUG" ]; then
+    echo "debug mode: run utils/ssh.sh root@$(interface_ip eth0) to diagnose this failure."
+    sleep 86400
+  fi
+
+  exit 1
+fi
+
+cd ..
+rm -rf demobuilder
+
+cleanup
+
+if [ "${LAYER%/*}" = "targets" ]; then
+  if [ -e /lib/systemd/system/webproxycache.service ]; then
+    sed -i -e "/Environment=/ d;" /lib/systemd/system/webproxycache.service
+  fi
+  rm /usr/local/bin/demobuilder-cleanup.sh
+  rm /root/.ssh/authorized_keys
+fi
+
+echo "$0: Done."
+( sleep 1; poweroff ) </dev/null &>/dev/null &

@@ -7,7 +7,7 @@ if grep -q 'release 6' /etc/redhat-release; then
 elif grep -q 'release 7' /etc/redhat-release; then
   register_channels rhel-7-server-rpms
 else
-  export http_proxy=$PROXY
+  register_channels
 fi
 
 yum_install nfs-utils nfs-utils-lib
@@ -24,20 +24,9 @@ useradd vagrant
 echo vagrant | passwd --stdin vagrant
 echo 'vagrant ALL=(ALL) NOPASSWD: ALL' >>/etc/sudoers
 mkdir -p /var/lib/AccountsService/users
-cat <<EOF >/var/lib/AccountsService/users/vagrant
-[User]
-Language=
-XSession=
-SystemAccount=true
-EOF
+cp vagrant /var/lib/AccountsService/users
 
 sed -i -e '/Defaults.*requiretty/ d;' /etc/sudoers
 
-register_https_proxy_ca
-
-su vagrant -c "mkdir -m 0700 /home/vagrant/.ssh; https_proxy=$PROXY curl -so /home/vagrant/.ssh/authorized_keys https://raw.githubusercontent.com/mitchellh/vagrant/master/keys/vagrant.pub; chmod 0600 /home/vagrant/.ssh/authorized_keys"
+su vagrant -c "mkdir -m 0700 /home/vagrant/.ssh; https_proxy=$PROXY curl -sLo /home/vagrant/.ssh/authorized_keys https://github.com/mitchellh/vagrant/raw/master/keys/vagrant.pub; chmod 0600 /home/vagrant/.ssh/authorized_keys"
 chcon system_u:object_r:ssh_home_t:s0 /home/vagrant/.ssh /home/vagrant/.ssh/authorized_keys
-
-rm /root/.ssh/authorized_keys
-
-cleanup
